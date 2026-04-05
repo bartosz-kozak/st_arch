@@ -11,6 +11,7 @@ This is a personal fork of [st](https://st.suckless.org/) (simple terminal) by [
 Changes from the upstream default config:
 
 - **Font**: changed to `MesloLGS NF` (Nerd Font), pixelsize 12, with antialiasing and autohinting enabled — for icon/glyph support matching the dwm status bar
+- **Transparency**: 32-bit ARGB visual with configurable background opacity (inspired by [Luke Smith's st build](https://github.com/LukeSmithxyz/st))
 
 ---
 
@@ -18,6 +19,7 @@ Changes from the upstream default config:
 
 - Xlib header files
 - `MesloLGS NF` (or another Nerd Font) installed on your system
+- A compositor (`picom`, `xcompmgr`, etc.) for transparency to take effect
 
 ---
 
@@ -37,7 +39,7 @@ tic -sx st.info
 
 ---
 
-## Key bindings (default)
+## Key bindings
 
 | Key | Action |
 |-----|--------|
@@ -49,6 +51,8 @@ tic -sx st.info
 | `Ctrl + Shift + Y` | paste from primary selection |
 | `Shift + Insert` | paste from primary selection |
 | `Middle click` | paste from primary selection |
+| `Alt + A` | increase opacity (+0.05) |
+| `Alt + S` | decrease opacity (-0.05) |
 
 ---
 
@@ -59,6 +63,17 @@ Edit `config.h` and recompile. st has no runtime config — all changes require 
 ```sh
 make clean install
 ```
+
+### Transparency
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `alpha` | `0.8` | Background opacity (0.0–1.0) |
+| `alphaOffset` | `0.0` | Extra transparency when unfocused |
+
+Override alpha at launch: `st -A 0.9`
+
+Transparency requires a compositor running (e.g. `picom`).
 
 ---
 

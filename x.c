@@ -59,6 +59,7 @@ static void zoom(const Arg *);
 static void zoomabs(const Arg *);
 static void zoomreset(const Arg *);
 static void ttysend(const Arg *);
+static void changealpha(const Arg *);
 
 /* config.h for applying patches and the configuration. */
 #include "config.h"
@@ -104,6 +105,7 @@ typedef struct {
 	Visual *vis;
 	XSetWindowAttributes attrs;
 	int scr;
+	int depth;
 	int isfixed; /* is fixed geometry? */
 	int l, t; /* left and top offset */
 	int gm; /* geometry mask */
@@ -154,6 +156,7 @@ static void xinit(int, int);
 static void cresize(int, int);
 static void xresize(int, int);
 static void xhints(void);
+static void xloadalpha(void);
 static int xloadcolor(int, const char *, Color *);
 static int xloadfont(Font *, FcPattern *);
 static void xloadfonts(const char *, double);
@@ -251,6 +254,7 @@ static char *opt_io    = NULL;
 static char *opt_line  = NULL;
 static char *opt_name  = NULL;
 static char *opt_title = NULL;
+static char *opt_alpha = NULL;
 
 static uint buttons; /* bit field of pressed buttons */
 
@@ -751,8 +755,7 @@ xresize(int col, int row)
 	win.th = row * win.ch;
 
 	XFreePixmap(xw.dpy, xw.buf);
-	xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h,
-			DefaultDepth(xw.dpy, xw.scr));
+	xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h, xw.depth);
 	XftDrawChange(xw.draw, xw.buf);
 	xclear(0, 0, win.w, win.h);
 
@@ -813,6 +816,27 @@ xloadcols(void)
 				die("could not allocate color %d\n", i);
 		}
 	loaded = 1;
+	xloadalpha();
+}
+
+void
+xloadalpha(void)
+{
+	float usedAlpha = IS_SET(MODE_FOCUSED) ? alpha : alphaUnfocus;
+	dc.col[defaultbg].color.alpha = (unsigned short)(0xffff * usedAlpha);
+	dc.col[defaultbg].pixel &= 0x00FFFFFF;
+	dc.col[defaultbg].pixel |= (unsigned long)(unsigned char)(0xff * usedAlpha) << 24;
+}
+
+void
+changealpha(const Arg *arg)
+{
+	if ((alpha > 0 && arg->f < 0) || (alpha < 1 && arg->f > 0))
+		alpha += arg->f;
+	alpha = MAX(0, MIN(alpha, 1));
+	alphaUnfocus = MAX(0, MIN(alpha - alphaOffset, 1));
+	xloadcols();
+	redraw();
 }
 
 int
@@ -1138,7 +1162,18 @@ xinit(int cols, int rows)
 	if (!(xw.dpy = XOpenDisplay(NULL)))
 		die("can't open display\n");
 	xw.scr = XDefaultScreen(xw.dpy);
-	xw.vis = XDefaultVisual(xw.dpy, xw.scr);
+
+	/* Use 32-bit ARGB visual for transparency support (requires compositor) */
+	{
+		XVisualInfo vi;
+		if (XMatchVisualInfo(xw.dpy, xw.scr, 32, TrueColor, &vi)) {
+			xw.vis = vi.visual;
+			xw.depth = 32;
+		} else {
+			xw.vis = XDefaultVisual(xw.dpy, xw.scr);
+			xw.depth = XDefaultDepth(xw.dpy, xw.scr);
+		}
+	}
 
 	/* font */
 	if (!FcInit())
@@ -1147,8 +1182,14 @@ xinit(int cols, int rows)
 	usedfont = (opt_font == NULL)? font : opt_font;
 	xloadfonts(usedfont, 0);
 
+	/* apply command-line alpha override and compute unfocused alpha */
+	if (opt_alpha)
+		alpha = strtof(opt_alpha, NULL);
+	alphaUnfocus = alpha - alphaOffset;
+
 	/* colors */
-	xw.cmap = XDefaultColormap(xw.dpy, xw.scr);
+	xw.cmap = XCreateColormap(xw.dpy, XRootWindow(xw.dpy, xw.scr),
+	                          xw.vis, AllocNone);
 	xloadcols();
 
 	/* adjust fixed window geometry */
@@ -1172,7 +1213,7 @@ xinit(int cols, int rows)
 	if (!(opt_embed && (parent = strtol(opt_embed, NULL, 0))))
 		parent = root;
 	xw.win = XCreateWindow(xw.dpy, root, xw.l, xw.t,
-			win.w, win.h, 0, XDefaultDepth(xw.dpy, xw.scr), InputOutput,
+			win.w, win.h, 0, xw.depth, InputOutput,
 			xw.vis, CWBackPixel | CWBorderPixel | CWBitGravity
 			| CWEventMask | CWColormap, &xw.attrs);
 	if (parent != root)
@@ -1182,8 +1223,7 @@ xinit(int cols, int rows)
 	gcvalues.graphics_exposures = False;
 	dc.gc = XCreateGC(xw.dpy, xw.win, GCGraphicsExposures,
 			&gcvalues);
-	xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h,
-			DefaultDepth(xw.dpy, xw.scr));
+	xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h, xw.depth);
 	XSetForeground(xw.dpy, dc.gc, dc.col[defaultbg].pixel);
 	XFillRectangle(xw.dpy, xw.buf, dc.gc, 0, 0, win.w, win.h);
 
@@ -1793,6 +1833,10 @@ focus(XEvent *ev)
 		if (IS_SET(MODE_FOCUS))
 			ttywrite("\033[O", 3, 0);
 	}
+	if (alphaOffset != 0) {
+		xloadalpha();
+		redraw();
+	}
 }
 
 int
@@ -2026,11 +2070,11 @@ run(void)
 void
 usage(void)
 {
-	die("usage: %s [-aiv] [-c class] [-f font] [-g geometry]"
+	die("usage: %s [-aiv] [-A alpha] [-c class] [-f font] [-g geometry]"
 	    " [-n name] [-o file]\n"
 	    "          [-T title] [-t title] [-w windowid]"
 	    " [[-e] command [args ...]]\n"
-	    "       %s [-aiv] [-c class] [-f font] [-g geometry]"
+	    "       %s [-aiv] [-A alpha] [-c class] [-f font] [-g geometry]"
 	    " [-n name] [-o file]\n"
 	    "          [-T title] [-t title] [-w windowid] -l line"
 	    " [stty_args ...]\n", argv0, argv0);
@@ -2046,6 +2090,9 @@ main(int argc, char *argv[])
 	ARGBEGIN {
 	case 'a':
 		allowaltscreen = 0;
+		break;
+	case 'A':
+		opt_alpha = EARGF(usage());
 		break;
 	case 'c':
 		opt_class = EARGF(usage());

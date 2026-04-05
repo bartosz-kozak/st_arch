@@ -8,6 +8,13 @@
 static char *font = "MesloLGS NF:pixelsize=12:antialias=true:autohint=true";
 static int borderpx = 2;
 
+/* bg opacity: 0.0 = fully transparent, 1.0 = fully opaque
+ * alphaOffset: how much more transparent when unfocused (0.0 = same as focused)
+ * requires a compositor (picom, xcompmgr, etc.) to take effect */
+static float alpha = 0.8;
+static float alphaOffset = 0.0;
+static float alphaUnfocus;
+
 /*
  * What program is execed by st depends of these precedence rules:
  * 1: program passed with -e
@@ -189,6 +196,8 @@ static MouseShortcut mshortcuts[] = {
 
 static Shortcut shortcuts[] = {
 	/* mask                 keysym          function        argument */
+	{ MODKEY,               XK_a,           changealpha,    {.f = +0.05} },
+	{ MODKEY,               XK_s,           changealpha,    {.f = -0.05} },
 	{ XK_ANY_MOD,           XK_Break,       sendbreak,      {.i =  0} },
 	{ ControlMask,          XK_Print,       toggleprinter,  {.i =  0} },
 	{ ShiftMask,            XK_Print,       printscreen,    {.i =  0} },
