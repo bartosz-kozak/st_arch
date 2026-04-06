@@ -5,7 +5,7 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "MesloLGS NF:pixelsize=12:antialias=true:autohint=true";
+static char *font = "MesloLGS Nerd Font Mono:pixelsize=16:antialias=true:autohint=true";
 static int borderpx = 2;
 
 /* bg opacity: 0.0 = fully transparent, 1.0 = fully opaque
